@@ -276,6 +276,7 @@ import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { TeamChannelHeaderBar } from "./chat/TeamChannelHeaderBar";
 import { useSideChat } from "./chat/useSideChat";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
@@ -3341,6 +3342,15 @@ export default function ChatView(props: ChatViewProps) {
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
           </header>
+        )}
+        {embedded ? null : (
+          <TeamChannelHeaderBar
+            environmentId={activeThread.environmentId}
+            threadId={activeThread.id}
+            threadTitle={activeThread.title}
+            project={activeProject ?? null}
+            channel={activeThreadShell?.channel ?? serverProjection?.thread.channel}
+          />
         )}
 
         <div className="relative flex min-h-0 min-w-0 flex-1">

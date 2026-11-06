@@ -66,6 +66,7 @@ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimi
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { resolveActiveAgentForTurn } from "./TeamAgentContext.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -142,6 +143,11 @@ export interface ThreadManagementSendInput {
   readonly messageId: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
+  readonly authorAgentId?: OrchestrationV2ConversationMessage["authorAgentId"];
+  readonly authorAgentName?: OrchestrationV2ConversationMessage["authorAgentName"];
+  readonly authorAgentRole?: OrchestrationV2ConversationMessage["authorAgentRole"];
+  readonly targetAgentId?: OrchestrationV2ConversationMessage["targetAgentId"];
+  readonly teamTaskRef?: OrchestrationV2ConversationMessage["teamTaskRef"];
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
@@ -748,10 +754,54 @@ const make = Effect.gen(function* () {
     }
   };
 
+  const enrichTeamChannelDispatch = (
+    command: OrchestrationV2ServerCommand,
+  ): Effect.Effect<OrchestrationV2ServerCommand> => {
+    if (command.type !== "message.dispatch") {
+      return Effect.succeed(command);
+    }
+    return orchestrator.getThreadRecords(command.threadId, []).pipe(
+      Effect.flatMap((projection) => {
+        if (projection.thread.channel === undefined) {
+          return Effect.succeed(command as OrchestrationV2ServerCommand);
+        }
+        return serverSettings.getSettings.pipe(
+          Effect.orElseSucceed(() => null),
+          Effect.map((settings): OrchestrationV2ServerCommand => {
+            if (!settings || settings.agentProfiles.length === 0) {
+              return command;
+            }
+            const activeAgent = resolveActiveAgentForTurn({
+              thread: projection.thread,
+              message: {
+                text: command.text,
+                ...(command.targetAgentId === undefined
+                  ? {}
+                  : { targetAgentId: command.targetAgentId }),
+              },
+              agentProfiles: settings.agentProfiles,
+              teamGroups: settings.teamGroups,
+            });
+            if (activeAgent === undefined) {
+              return command;
+            }
+            return {
+              ...command,
+              modelSelection: activeAgent.modelSelection,
+            };
+          }),
+        );
+      }),
+      Effect.orElseSucceed((): OrchestrationV2ServerCommand => command),
+    );
+  };
+
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
-      Effect.andThen(assertDispatchTargetEnabled(command)),
-      Effect.andThen(orchestrator.dispatch(command)),
+      Effect.andThen(enrichTeamChannelDispatch(command)),
+      Effect.flatMap((enriched) =>
+        assertDispatchTargetEnabled(enriched).pipe(Effect.andThen(orchestrator.dispatch(enriched))),
+      ),
     );
 
   const getProjectThreadRecords: ThreadManagementServiceShape["getProjectThreadRecords"] = (
@@ -849,6 +899,11 @@ const make = Effect.gen(function* () {
       messageId: input.messageId,
       ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+      ...(input.authorAgentId === undefined ? {} : { authorAgentId: input.authorAgentId }),
+      ...(input.authorAgentName === undefined ? {} : { authorAgentName: input.authorAgentName }),
+      ...(input.authorAgentRole === undefined ? {} : { authorAgentRole: input.authorAgentRole }),
+      ...(input.targetAgentId === undefined ? {} : { targetAgentId: input.targetAgentId }),
+      ...(input.teamTaskRef === undefined ? {} : { teamTaskRef: input.teamTaskRef }),
       text: input.text,
       attachments: input.attachments,
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),

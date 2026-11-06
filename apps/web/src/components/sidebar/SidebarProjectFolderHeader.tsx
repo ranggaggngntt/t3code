@@ -1,6 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
+import { BotIcon, ChevronDownIcon, SquarePenIcon, UsersIcon } from "lucide-react";
 import { memo } from "react";
 
 import { cn } from "~/lib/utils";
@@ -41,6 +41,8 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
   hiddenThreads: readonly EnvironmentThreadShell[];
   onToggle: (group: SidebarProjectSnapshot) => void;
   onNewThread: (group: SidebarProjectSnapshot) => void;
+  onNewGroup?: ((group: SidebarProjectSnapshot) => void) | undefined;
+  onManageAgents?: ((group: SidebarProjectSnapshot) => void) | undefined;
   onContextMenu: (group: SidebarProjectSnapshot, position: { x: number; y: number }) => void;
 }) {
   const { group, collapsed, hiddenThreads } = props;
@@ -76,7 +78,7 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
         className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-(--sidebar-row-content-inset) text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <ProjectFavicon project={group} className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground/90 group-hover/project-folder:pr-16">
           {group.displayName}
         </span>
         {dot ? (
@@ -98,7 +100,43 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
         />
       </button>
       {/* Sits over the count, which hides on hover, and left of the chevron. */}
-      <span className="absolute inset-y-0 right-6 flex items-center opacity-0 focus-within:opacity-100 group-hover/project-folder:opacity-100 pointer-coarse:opacity-100">
+      <span className="absolute inset-y-0 right-6 flex items-center gap-0.5 opacity-0 focus-within:opacity-100 group-hover/project-folder:opacity-100 pointer-coarse:opacity-100">
+        {props.onManageAgents ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-sidebar-action-for={rowId}
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label={`Manage agents in ${group.displayName}`}
+                  onClick={() => props.onManageAgents?.(group)}
+                />
+              }
+            >
+              <BotIcon aria-hidden />
+            </TooltipTrigger>
+            <TooltipPopup>Manage agents in {group.displayName}</TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {props.onNewGroup ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-sidebar-action-for={rowId}
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label={`New group in ${group.displayName}`}
+                  onClick={() => props.onNewGroup?.(group)}
+                />
+              }
+            >
+              <UsersIcon aria-hidden />
+            </TooltipTrigger>
+            <TooltipPopup>New group in {group.displayName}</TooltipPopup>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <TooltipTrigger
             render={

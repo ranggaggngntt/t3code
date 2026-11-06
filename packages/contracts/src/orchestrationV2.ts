@@ -8,6 +8,7 @@ import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
+  AgentProfileId,
   CheckpointId,
   CheckpointRef,
   CheckpointScopeId,
@@ -37,6 +38,7 @@ import {
   RunId,
   RuntimeRequestId,
   ScheduledTaskId,
+  TeamGroupId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnItemId,
@@ -441,10 +443,47 @@ const LenientThreadOpens = Schema.NullOr(OrchestrationV2ThreadOpens).pipe(
   Schema.catchDecoding(() => Effect.succeedSome(null)),
 );
 
+export const OrchestrationV2ThreadChannel = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("group_chat"),
+    projectId: ProjectId,
+    groupId: Schema.optional(TeamGroupId),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("agent_personal"),
+    projectId: ProjectId,
+    agentProfileId: AgentProfileId,
+  }),
+]);
+export type OrchestrationV2ThreadChannel = typeof OrchestrationV2ThreadChannel.Type;
+
+export const OrchestrationV2TeamTaskRef = Schema.Struct({
+  taskId: NodeId,
+  groupId: Schema.optional(TeamGroupId),
+  groupName: Schema.optional(TrimmedNonEmptyString),
+  agentProfileId: AgentProfileId,
+  agentName: TrimmedNonEmptyString,
+  agentRole: TrimmedNonEmptyString,
+  personalThreadId: ThreadId,
+  personalRunId: Schema.optional(RunId),
+  title: TrimmedNonEmptyString,
+  kind: Schema.Literals(["assigned", "completed", "blocker"]),
+});
+export type OrchestrationV2TeamTaskRef = typeof OrchestrationV2TeamTaskRef.Type;
+
+const OrchestrationV2AgentAttributionFields = {
+  authorAgentId: Schema.optional(AgentProfileId),
+  authorAgentName: Schema.optional(TrimmedNonEmptyString),
+  authorAgentRole: Schema.optional(TrimmedNonEmptyString),
+  targetAgentId: Schema.optional(AgentProfileId),
+  teamTaskRef: Schema.optional(OrchestrationV2TeamTaskRef),
+} as const;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
   projectId: ProjectId,
+  channel: Schema.optional(OrchestrationV2ThreadChannel),
   title: TrimmedNonEmptyString,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
@@ -1288,6 +1327,7 @@ export type OrchestrationV2IdleCompaction = typeof OrchestrationV2IdleCompaction
 export const OrchestrationV2ConversationMessage = Schema.Struct({
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
+  ...OrchestrationV2AgentAttributionFields,
   scheduledTaskId: Schema.optional(ScheduledTaskId),
   senderThreadId: Schema.optional(ThreadId),
   idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
@@ -1601,6 +1641,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     ...OrchestrationV2CreationFields,
+    ...OrchestrationV2AgentAttributionFields,
     type: Schema.Literal("user_message"),
     messageId: MessageId,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
@@ -1617,6 +1658,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
+    ...OrchestrationV2AgentAttributionFields,
     type: Schema.Literal("assistant_message"),
     messageId: MessageId,
     text: Schema.String,
@@ -2073,6 +2115,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
   projectId: ProjectId,
+  channel: Schema.optional(OrchestrationV2ThreadChannel),
   title: Schema.String,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
@@ -2437,6 +2480,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     ...OrchestrationV2CreationFields,
+    ...OrchestrationV2AgentAttributionFields,
     type: Schema.Literal("user_message"),
     messageId: MessageId,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
@@ -2451,6 +2495,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
+    ...OrchestrationV2AgentAttributionFields,
     type: Schema.Literal("assistant_message"),
     messageId: MessageId,
     text: Schema.String,
@@ -2910,6 +2955,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     projectId: ProjectId,
+    channel: Schema.optional(OrchestrationV2ThreadChannel),
     title: TrimmedNonEmptyString,
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
@@ -3149,6 +3195,7 @@ export const OrchestrationV2Command = Schema.Union([
     /** Sends this pending guest message; the server uses the guest's text, not `text`. */
     guestMessageId: Schema.optional(GuestMessageId),
     ...OrchestrationV2CreationFields,
+    ...OrchestrationV2AgentAttributionFields,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
     idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
@@ -3635,6 +3682,7 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   threadId: Schema.optional(ThreadId),
   reuseExistingThread: Schema.optional(Schema.Boolean),
   projectId: ProjectId,
+  channel: Schema.optional(OrchestrationV2ThreadChannel),
   title: TrimmedNonEmptyString,
   generateTitle: Schema.optional(Schema.Boolean),
   modelSelection: ModelSelection,
@@ -3643,6 +3691,7 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
   initialMessage: Schema.optional(
     Schema.Struct({
+      ...OrchestrationV2AgentAttributionFields,
       messageId: Schema.optional(MessageId),
       text: Schema.String,
       context: Schema.optional(OrchestrationMessageContext),

@@ -36,7 +36,7 @@ import {
 } from "@t3tools/provider-core/server/snapshotProbe";
 import { resolveUsageLimitsAfterProbe } from "@t3tools/provider-core/server/usageLimits";
 
-import { antigravityThinkingConfig } from "./acp/AntigravityAcpSupport.ts";
+import { antigravityModelOptions, antigravityThinkingConfig } from "./acp/AntigravityAcpSupport.ts";
 
 const EMPTY_MODEL_CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 const MAX_WORKSPACE_SNAPSHOTS = 32;
@@ -88,6 +88,11 @@ export function buildAntigravityModelsFromSession(
           })) ?? [])
         : [];
   const currentThinking = antigravityThinkingConfig(setup.configOptions);
+  const fallbackThinking =
+    currentThinking ??
+    Array.from(thinkingLevels.values()).find(
+      (candidate): candidate is ThinkingConfig => candidate !== null,
+    );
   const seen = new Set<string>();
   // The agent can list two IDs under one name; label the later ones so the picker tells them apart.
   const names = new Set<string>();
@@ -109,7 +114,7 @@ export function buildAntigravityModelsFromSession(
           : {}),
         capabilities:
           observed === undefined
-            ? thinkingCapabilities(currentThinking, false)
+            ? thinkingCapabilities(fallbackThinking, false)
             : thinkingCapabilities(observed, true),
       },
     ];
@@ -219,7 +224,13 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     const model = configOptions?.find(
       (option) => option.id === "model" || option.category === "model",
     );
-    if (model?.type === "select" && model.currentValue) {
+    if (
+      model?.type === "select" &&
+      model.currentValue &&
+      antigravityModelOptions(configOptions ?? []).some(
+        (option) => option.value === model.currentValue,
+      )
+    ) {
       thinkingLevels.set(model.currentValue, antigravityThinkingConfig(configOptions) ?? null);
     }
   };

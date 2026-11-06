@@ -34,6 +34,19 @@ import {
   OrchestratorMcpThreadSendResult,
   OrchestratorMcpThreadWaitInput,
   OrchestratorMcpThreadWaitResult,
+  OrchestratorMcpTeamListAgentsResult,
+  OrchestratorMcpTeamCreateAgentInput,
+  OrchestratorMcpTeamCreateAgentResult,
+  OrchestratorMcpTeamUpdateAgentInput,
+  OrchestratorMcpTeamUpdateAgentResult,
+  OrchestratorMcpTeamDeleteAgentInput,
+  OrchestratorMcpTeamDeleteAgentResult,
+  OrchestratorMcpTeamAskAgentInput,
+  OrchestratorMcpTeamAskAgentResult,
+  OrchestratorMcpTeamDelegateTaskInput,
+  OrchestratorMcpTeamDelegateTaskResult,
+  OrchestratorMcpTeamReportBlockerInput,
+  OrchestratorMcpTeamReportBlockerResult,
   ThreadMetadataMcpUpdateInput,
   ThreadMetadataMcpUpdateResult,
   TrimmedNonEmptyString,
@@ -349,6 +362,96 @@ const EnvironmentUnlinkTool = Tool.make("t3_environment_unlink", {
   .annotate(Tool.Idempotent, true)
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenWhileLinksOff);
 
+const TeamListAgentsTool = Tool.make("t3_team_list_agents", {
+  description:
+    "List configured specialized team agents (names, roles, provider/model, responsibilities, AGENTS.md, SKILLS, and Personal Chat status) in this project.",
+  success: OrchestratorMcpTeamListAgentsResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "List team agents")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+const TeamCreateAgentTool = Tool.make("t3_team_create_agent", {
+  description:
+    "Create a new specialized team agent profile (`name`, `role`, `providerInstanceId`, `model`, `modelOptions`, `runtimeMode`, `interactionMode`, `responsibilities`, `systemInstructions`, `agentsMdContent`, `agentsMdPath`, `enabledSkillPaths`, `customSkills`) and add it to the project or current group. Call `orchestrator_capabilities` to inspect available providers and models.",
+  parameters: OrchestratorMcpTeamCreateAgentInput,
+  success: OrchestratorMcpTeamCreateAgentResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Create a team agent")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
+const TeamUpdateAgentTool = Tool.make("t3_team_update_agent", {
+  description:
+    "Update an existing team agent profile (`agentNameOrId`) including `name`, `role`, `providerInstanceId`, `model`, `modelOptions`, `runtimeMode`, `interactionMode`, `responsibilities`, `systemInstructions`, `agentsMdContent`, `agentsMdPath`, `enabledSkillPaths`, or `customSkills`.",
+  parameters: OrchestratorMcpTeamUpdateAgentInput,
+  success: OrchestratorMcpTeamUpdateAgentResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Update a team agent")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
+
+const TeamDeleteAgentTool = Tool.make("t3_team_delete_agent", {
+  description: "Delete a team agent profile (`agentNameOrId`) and remove it from group rosters.",
+  parameters: OrchestratorMcpTeamDeleteAgentInput,
+  success: OrchestratorMcpTeamDeleteAgentResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Delete a team agent")
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, false);
+
+const TeamAskAgentTool = Tool.make("t3_team_ask_agent", {
+  description:
+    "Pass the speaking floor to another team agent in Group Chat (`targetAgent` by name, role, or ID) with a focused `question`. End your turn after calling so that agent can reply next in Group Chat.",
+  parameters: OrchestratorMcpTeamAskAgentInput,
+  success: OrchestratorMcpTeamAskAgentResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Ask a team agent in Group Chat")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, true);
+
+const TeamDelegateTaskTool = Tool.make("t3_team_delegate_task", {
+  description:
+    "Delegate an implementation, QA, or review task to a team agent (`targetAgent` by name, role, or ID). The detailed work runs in that agent's Personal Agent Chat, and a concise report is posted back to Group Chat on completion.",
+  parameters: OrchestratorMcpTeamDelegateTaskInput,
+  success: OrchestratorMcpTeamDelegateTaskResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Delegate a task to a team agent's Personal Chat")
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
+
+const TeamReportBlockerTool = Tool.make("t3_team_report_blocker", {
+  description:
+    "Report a high-level blocker or cross-role question from your Personal Agent Chat back to Group Chat for team discussion.",
+  parameters: OrchestratorMcpTeamReportBlockerInput,
+  success: OrchestratorMcpTeamReportBlockerResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Title, "Report a blocker to Group Chat")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, true);
+
 export const OrchestratorToolkit = Toolkit.make(
   OrchestratorCapabilitiesTool,
   DelegateTaskTool,
@@ -370,4 +473,11 @@ export const OrchestratorToolkit = Toolkit.make(
   EnvironmentLinksTool,
   EnvironmentLinkTool,
   EnvironmentUnlinkTool,
+  TeamListAgentsTool,
+  TeamCreateAgentTool,
+  TeamUpdateAgentTool,
+  TeamDeleteAgentTool,
+  TeamAskAgentTool,
+  TeamDelegateTaskTool,
+  TeamReportBlockerTool,
 );

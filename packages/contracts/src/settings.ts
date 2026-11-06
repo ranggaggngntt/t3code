@@ -33,6 +33,7 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
+import { AgentProfile, TeamGroup } from "./agentProfile.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
 import {
@@ -1215,6 +1216,8 @@ export const ServerSettings = Schema.Struct({
   defaultProjectScripts: Schema.Array(ProjectScript).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
+  agentProfiles: Schema.Array(AgentProfile).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  teamGroups: Schema.Array(TeamGroup).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   projectScriptOverrides: Schema.Record(ProjectId, Schema.NullOr(Schema.Array(ProjectScript))).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1617,6 +1620,8 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   defaultAutoPull: Schema.optionalKey(Schema.Boolean),
   defaultProjectScripts: Schema.optionalKey(Schema.Array(ProjectScript)),
+  agentProfiles: Schema.optionalKey(Schema.Array(AgentProfile)),
+  teamGroups: Schema.optionalKey(Schema.Array(TeamGroup)),
   projectScriptOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Array(ProjectScript))),
   ),

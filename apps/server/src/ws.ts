@@ -2177,6 +2177,7 @@ export const layerWsRpc = (
                       ? {}
                       : { reuseExistingThread: input.reuseExistingThread }),
                     projectId: input.projectId,
+                    ...(input.channel === undefined ? {} : { channel: input.channel }),
                     title: input.title,
                     ...(input.generateTitle === undefined
                       ? {}
@@ -2192,6 +2193,21 @@ export const layerWsRpc = (
                             ...(input.initialMessage.messageId === undefined
                               ? {}
                               : { messageId: input.initialMessage.messageId }),
+                            ...(input.initialMessage.authorAgentId === undefined
+                              ? {}
+                              : { authorAgentId: input.initialMessage.authorAgentId }),
+                            ...(input.initialMessage.authorAgentName === undefined
+                              ? {}
+                              : { authorAgentName: input.initialMessage.authorAgentName }),
+                            ...(input.initialMessage.authorAgentRole === undefined
+                              ? {}
+                              : { authorAgentRole: input.initialMessage.authorAgentRole }),
+                            ...(input.initialMessage.targetAgentId === undefined
+                              ? {}
+                              : { targetAgentId: input.initialMessage.targetAgentId }),
+                            ...(input.initialMessage.teamTaskRef === undefined
+                              ? {}
+                              : { teamTaskRef: input.initialMessage.teamTaskRef }),
                             text: input.initialMessage.text,
                             attachments: input.initialMessage.attachments,
                             ...(input.initialMessage.context === undefined

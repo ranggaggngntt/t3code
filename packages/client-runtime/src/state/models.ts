@@ -195,6 +195,7 @@ export interface EnvironmentThreadShell {
   readonly opens?: import("@t3tools/contracts").OrchestrationV2ThreadOpens | null;
   readonly titleRegeneration?: { readonly requestId: string; readonly startedAt: string } | null;
   readonly deletedAt: string | null;
+  readonly channel?: OrchestrationV2ThreadShell["channel"];
   readonly source: OrchestrationV2ThreadShell;
 }
 
@@ -345,6 +346,7 @@ export function presentThreadShell(
             startedAt: iso(thread.titleRegeneration.startedAt),
           },
     deletedAt: nullableIso(thread.deletedAt),
+    ...(thread.channel === undefined ? {} : { channel: thread.channel }),
     source: thread,
   };
 }

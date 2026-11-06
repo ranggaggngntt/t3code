@@ -171,7 +171,10 @@ import {
 import type { SidebarThreadSummary } from "../types";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { cn } from "~/lib/utils";
+import { openAgentProfileDialog, openProjectAgentsDialog } from "./AgentProfileDialog";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
+import { SidebarProjectTeamGroups, SidebarTeamSection } from "./SidebarTeamSection";
+import { openTeamGroupDialog } from "./TeamGroupDialog";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
@@ -1265,6 +1268,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (isMobile) setOpenMobile(false);
     void handleNewThread(scopeProjectRef(group.environmentId, group.id));
   });
+  const startGroupInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
+    openTeamGroupDialog({
+      environmentId: group.environmentId,
+      projectId: group.id,
+      projectTitle: group.displayName,
+      group: null,
+    });
+  });
+  const manageAgentsInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
+    openProjectAgentsDialog({
+      environmentId: group.environmentId,
+      projectId: group.id,
+      projectTitle: group.displayName,
+    });
+  });
   const handleProjectFolderContextMenu = useStableCallback(
     (group: SidebarProjectSnapshot, position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -1274,6 +1292,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           api.contextMenu.show(
             [
               { id: "new-thread", label: "New thread" },
+              { id: "new-group", label: "New group" },
+              { id: "manage-agents", label: "Manage agents" },
               { id: "copy-path", label: "Copy path" },
               ...(canPinProject(group)
                 ? [
@@ -1291,6 +1311,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         switch (clicked.value) {
           case "new-thread":
             startThreadInProjectFolder(group);
+            return;
+          case "new-group":
+            startGroupInProjectFolder(group);
+            return;
+          case "manage-agents":
+            manageAgentsInProjectFolder(group);
             return;
           case "copy-path":
             copyPathToClipboard(group.workspaceRoot, { path: group.workspaceRoot });
@@ -1358,8 +1384,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
         : scopedProjectGroups
       : null,
-    keepEmptyFolders: (group) =>
-      scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
+    keepEmptyFolders: (group) => {
+      if (scopedProjectGroups.length > 0 || (group.pinned && !group.archived)) {
+        return true;
+      }
+      if (group.archived) {
+        return false;
+      }
+      const envSettings = serverConfigs.get(group.environmentId)?.settings;
+      if (!envSettings) {
+        return false;
+      }
+      return (
+        envSettings.teamGroups.some((teamGroup) => teamGroup.projectId === group.id) ||
+        envSettings.agentProfiles.some((agent) => agent.projectId === group.id)
+      );
+    },
   });
 
   // Ranked across environments as the palette ranks them, so one
@@ -3179,6 +3219,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 </Combobox>
               }
               onNewProject={openAddProjectCommandPalette}
+              onAddGlobalAgent={() => {
+                const envId = primaryEnvironmentId ?? connectedEnvironmentIds[0] ?? null;
+                if (!envId) return;
+                openAgentProfileDialog({
+                  environmentId: envId,
+                  profile: null,
+                  defaultProjectId: null,
+                });
+              }}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
@@ -3207,6 +3256,44 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         }
       >
         <SidebarGroup className="flex-1" role="presentation">
+          {!isSearchingThreads ? (
+            <SidebarTeamSection
+              environmentId={primaryEnvironmentId ?? connectedEnvironmentIds[0] ?? null}
+              activeProject={
+                (routeThreadRef
+                  ? (() => {
+                      const activeThread = threads.find(
+                        (candidate) =>
+                          candidate.environmentId === routeThreadRef.environmentId &&
+                          candidate.id === routeThreadRef.threadId,
+                      );
+                      return activeThread
+                        ? (projectByKey.get(
+                            `${activeThread.environmentId}:${activeThread.projectId}`,
+                          ) ?? null)
+                        : null;
+                    })()
+                  : null) ??
+                (scopedProjectRefs[0]
+                  ? (projectByKey.get(
+                      `${scopedProjectRefs[0].environmentId}:${scopedProjectRefs[0].projectId}`,
+                    ) ?? null)
+                  : null) ??
+                projects.find(
+                  (project) =>
+                    !isScratchProject(
+                      project,
+                      serverConfigs.get(project.environmentId)?.scratchWorkspaceRoot,
+                    ),
+                ) ??
+                projects[0] ??
+                null
+              }
+              allThreads={threads}
+              routeThreadRef={routeThreadRef}
+              showActiveProjectGroups={!boringSidebarEnabled}
+            />
+          ) : null}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider
@@ -3446,6 +3533,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         if (projectFolders !== null && item.marker === "active-placeholder") {
                           for (const folder of projectFolders) {
+                            const folderProject =
+                              projectByKey.get(
+                                `${folder.group.environmentId}:${folder.group.id}`,
+                              ) ?? null;
                             items.push(
                               <SidebarProjectFolderHeader
                                 key={`project-folder:${folder.group.projectKey}`}
@@ -3454,9 +3545,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 hiddenThreads={folder.hiddenThreads}
                                 onToggle={toggleProjectFolder}
                                 onNewThread={startThreadInProjectFolder}
+                                onNewGroup={startGroupInProjectFolder}
+                                onManageAgents={manageAgentsInProjectFolder}
                                 onContextMenu={handleProjectFolderContextMenu}
                               />,
                             );
+                            if (!folder.collapsed) {
+                              items.push(
+                                <SidebarProjectTeamGroups
+                                  key={`project-team-groups:${folder.group.projectKey}`}
+                                  environmentId={folder.group.environmentId}
+                                  projectId={folder.group.id}
+                                  projectTitle={folder.group.displayName}
+                                  defaultModelSelection={folderProject?.defaultModelSelection}
+                                  allThreads={threads}
+                                  routeThreadRef={routeThreadRef}
+                                />,
+                              );
+                            }
                             for (const thread of folder.threads) {
                               items.push(
                                 renderThreadRow(

@@ -4,6 +4,39 @@ T3 Code is an "agent harness control surface". It enables control of the agents 
 
 Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, T3 Code can control them.
 
+## What's Changed in This Fork
+
+This fork extends T3 Code with a **Multi-Agent Team & Group Chat Collaboration System**, per-agent **`AGENTS.md` & `SKILL.md` customization**, and **Antigravity runtime improvements**:
+
+### 1. Specialized Agent Profiles (`AgentProfile`)
+
+- **Custom Identity & Role**: Create specialized agents with their own name, role/title, color-coded monogram badge, responsibilities, and system instructions.
+- **Per-Agent Model & Effort Selection**: Assign each agent its own provider, model, **Effort / Thinking Level** (`Low`, `Medium`, `High`), runtime permission mode (`full-access`, `auto`, `auto-accept-edits`, `approval-required`), and interaction mode (`default` or `plan`).
+- **Project & Global Sharing**: Scope agents to a single project or share/import them across all projects from the project **Agents** manager.
+- **Dedicated `AGENTS.md` & `SKILL.md` per Agent**:
+  - Link an external workspace-relative or absolute `AGENTS.md` file (loaded fresh on every turn) and/or write built-in per-agent `AGENTS.md` instructions directly in the dialog.
+  - Toggle discovered workspace `SKILL.md` files, link external skill directories/files, or author custom inline skills (`SKILL.md`) stored with the agent profile.
+
+### 2. Team Groups, Group Chat & Personal Agent Chats
+
+- **Team Groups & Conversation Rosters**: Organize agents into project Team Groups with a designated **Team Lead / Orchestrator** (crown badge). Each Group Chat conversation can also customize its own active agent roster and orchestrator override.
+- **Dual-Channel Workflow (`group_chat` + `agent_personal`)**:
+  - **Group Chat**: Shared team channel where the user, Orchestrator, and specialist agents plan, discuss, and review work concisely.
+  - **Personal Agent Chat**: Dedicated 1-on-1 execution thread per agent where delegated tasks run with full tool logs and code diffs, with one-click navigation cards linking Group Chat task delegations, completions, and blockers to the agent's Personal Chat.
+
+### 3. Team Coordination MCP Tools (`t3_team_*`)
+
+- `t3_team_list_agents`: Inspect the active team roster, roles, models, effort options, `AGENTS.md`, skills, and personal thread IDs.
+- `t3_team_create_agent` / `t3_team_update_agent` / `t3_team_delete_agent`: Allow the Orchestrator agent to create or update team agents (including model, effort options, `AGENTS.md`, skills, and group membership) on the fly.
+- `t3_team_ask_agent`: Hand off the floor to a specialist agent in Group Chat and automatically return control to the Orchestrator once answered.
+- `t3_team_delegate_task`: Dispatch implementation tasks to a specialist agent's Personal Chat thread and automatically post the resulting `<group_chat_summary>` back to Group Chat when the agent finishes.
+- `t3_team_report_blocker`: Escalate blockers from a Personal Chat thread back to the Orchestrator in Group Chat.
+
+### 4. Antigravity Runtime (`1.4.5`) & Trajectory Improvements
+
+- **Effort / Thinking Level Support**: Full support for Antigravity `1.4.5` model families (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Claude Opus 5.5`, `Claude Sonnet 5.5`, `GPT-OSS 120B`) and `thinking_level` (`Low`, `Medium`, `High`) options, with automatic migration of legacy `1.3.0` `-high` / `-medium` / `-low` model IDs and live synchronization to active Personal Chat threads.
+- **Cross-Model & Group Chat Trajectory Isolation**: Automatically starts a fresh native Antigravity trajectory on multi-agent Group Chat turns, model switches, or after failed runs to prevent cross-model trajectory conversion errors.
+
 ## "Wait, what are you selling me?"
 
 Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.

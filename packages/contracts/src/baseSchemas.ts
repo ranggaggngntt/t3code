@@ -333,3 +333,7 @@ export const RawEventId = makeEntityId("RawEventId");
 export type RawEventId = typeof RawEventId.Type;
 export const PlanId = makeEntityId("PlanId");
 export type PlanId = typeof PlanId.Type;
+export const AgentProfileId = makeEntityId("AgentProfileId");
+export type AgentProfileId = typeof AgentProfileId.Type;
+export const TeamGroupId = makeEntityId("TeamGroupId");
+export type TeamGroupId = typeof TeamGroupId.Type;

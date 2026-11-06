@@ -1,4 +1,5 @@
 import {
+  type AgentProfileId,
   NodeId,
   CommandId,
   OrchestrationV2DomainEvent,
@@ -201,6 +202,11 @@ export interface ProviderEventIngestInput {
   readonly rawEventId?: RawEventId;
   readonly event: ProviderAdapter.ProviderAdapterV2Event;
   readonly analyticsContext?: ProviderTurnAnalyticsContext;
+  readonly agentAttribution?: {
+    readonly authorAgentId: AgentProfileId;
+    readonly authorAgentName: string;
+    readonly authorAgentRole: string;
+  };
 }
 
 export interface ProviderEventIngestorV2Shape {
@@ -559,28 +565,40 @@ export const layer: Layer.Layer<
                   nodeId: input.event.subagent.id,
                 }),
               ];
-            case "message.updated":
+            case "message.updated": {
+              const payload =
+                input.agentAttribution !== undefined &&
+                input.event.message.role === "assistant" &&
+                input.event.message.authorAgentId === undefined
+                  ? { ...input.event.message, ...input.agentAttribution }
+                  : input.event.message;
               return [
                 yield* makeDomainEvent(input, {
                   type: "message.updated",
-                  threadId: input.event.message.threadId,
-                  payload: input.event.message,
-                  runId: input.event.message.runId,
-                  nodeId: input.event.message.nodeId,
+                  threadId: payload.threadId,
+                  payload,
+                  runId: payload.runId,
+                  nodeId: payload.nodeId,
                 }),
               ];
-            case "turn_item.updated":
+            }
+            case "turn_item.updated": {
+              const turnItem =
+                input.agentAttribution !== undefined &&
+                input.event.turnItem.type === "assistant_message" &&
+                input.event.turnItem.authorAgentId === undefined
+                  ? { ...input.event.turnItem, ...input.agentAttribution }
+                  : input.event.turnItem;
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",
-                  threadId: input.event.turnItem.threadId,
-                  payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
-                  ),
-                  runId: input.event.turnItem.runId,
-                  nodeId: input.event.turnItem.nodeId,
+                  threadId: turnItem.threadId,
+                  payload: boundFileChangeForStorage(stripUnservedToolOutputImageBytes(turnItem)),
+                  runId: turnItem.runId,
+                  nodeId: turnItem.nodeId,
                 }),
               ];
+            }
             case "runtime_request.updated":
               return [
                 yield* makeDomainEvent(input, {

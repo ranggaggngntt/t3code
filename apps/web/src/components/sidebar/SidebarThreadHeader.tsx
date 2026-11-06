@@ -1,4 +1,4 @@
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { BotIcon, FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,6 +16,7 @@ export interface SidebarThreadHeaderProps {
   hasProjects: boolean;
   projectScope: ReactNode;
   onNewProject: () => void;
+  onAddGlobalAgent?: (() => void) | undefined;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
@@ -35,6 +36,7 @@ export function SidebarThreadHeader({
   hasProjects,
   projectScope,
   onNewProject,
+  onAddGlobalAgent,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -104,6 +106,11 @@ export function SidebarThreadHeader({
               <FolderPlusIcon />
             </SidebarHeaderIconButton>
           </>
+        ) : null}
+        {onAddGlobalAgent ? (
+          <SidebarHeaderIconButton label="Add global agent" onClick={onAddGlobalAgent}>
+            <BotIcon />
+          </SidebarHeaderIconButton>
         ) : null}
         <SidebarHeaderIconButton
           label="New thread"

@@ -51,6 +51,19 @@ import {
   type OrchestratorMcpThreadTimelineItem,
   type OrchestratorMcpThreadWaitInput,
   type OrchestratorMcpThreadWaitResult,
+  type OrchestratorMcpTeamListAgentsResult,
+  type OrchestratorMcpTeamCreateAgentInput,
+  type OrchestratorMcpTeamCreateAgentResult,
+  type OrchestratorMcpTeamUpdateAgentInput,
+  type OrchestratorMcpTeamUpdateAgentResult,
+  type OrchestratorMcpTeamDeleteAgentInput,
+  type OrchestratorMcpTeamDeleteAgentResult,
+  type OrchestratorMcpTeamAskAgentInput,
+  type OrchestratorMcpTeamAskAgentResult,
+  type OrchestratorMcpTeamDelegateTaskInput,
+  type OrchestratorMcpTeamDelegateTaskResult,
+  type OrchestratorMcpTeamReportBlockerInput,
+  type OrchestratorMcpTeamReportBlockerResult,
   type ProviderInteractionMode,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
@@ -101,6 +114,7 @@ import type {
 import { runOutcome } from "../orchestration-v2/RestartBackgroundNote.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
+import * as GroupChatCoordinatorService from "../orchestration-v2/GroupChatCoordinatorService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
@@ -215,6 +229,33 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpThreadInterruptInput,
   ) => Effect.Effect<OrchestratorMcpThreadInterruptResult, OrchestratorMcpFailure>;
+  readonly listTeamAgents: (
+    scope: McpInvocationScope,
+  ) => Effect.Effect<OrchestratorMcpTeamListAgentsResult, OrchestratorMcpFailure>;
+  readonly createTeamAgent: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamCreateAgentInput,
+  ) => Effect.Effect<OrchestratorMcpTeamCreateAgentResult, OrchestratorMcpFailure>;
+  readonly updateTeamAgent: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamUpdateAgentInput,
+  ) => Effect.Effect<OrchestratorMcpTeamUpdateAgentResult, OrchestratorMcpFailure>;
+  readonly deleteTeamAgent: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamDeleteAgentInput,
+  ) => Effect.Effect<OrchestratorMcpTeamDeleteAgentResult, OrchestratorMcpFailure>;
+  readonly askTeamAgent: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamAskAgentInput,
+  ) => Effect.Effect<OrchestratorMcpTeamAskAgentResult, OrchestratorMcpFailure>;
+  readonly delegateTeamTask: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamDelegateTaskInput,
+  ) => Effect.Effect<OrchestratorMcpTeamDelegateTaskResult, OrchestratorMcpFailure>;
+  readonly reportTeamBlocker: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpTeamReportBlockerInput,
+  ) => Effect.Effect<OrchestratorMcpTeamReportBlockerResult, OrchestratorMcpFailure>;
 }
 
 export class OrchestratorMcpService extends Context.Service<
@@ -1022,6 +1063,17 @@ const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
+  const groupChatCoordinatorOption = yield* Effect.serviceOption(
+    GroupChatCoordinatorService.GroupChatCoordinatorService,
+  );
+  const requireGroupChatCoordinator = Effect.fromOption(groupChatCoordinatorOption).pipe(
+    Effect.mapError(() =>
+      failure(
+        "orchestration_error",
+        "GroupChatCoordinatorService is not available in this runtime.",
+      ),
+    ),
+  );
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -3292,6 +3344,159 @@ const make = Effect.gen(function* () {
         status: result.type === "already_terminal" ? result.run.status : "interrupt_requested",
       } satisfies OrchestratorMcpThreadInterruptResult;
     }),
+    listTeamAgents: Effect.fn("OrchestratorMcpService.listTeamAgents")(function* (scope) {
+      const caller = yield* requireThreadScope(scope, "t3_team_list_agents");
+      const coordinator = yield* requireGroupChatCoordinator;
+      const shell = yield* threadManagement
+        .getThreadShell(caller.thread.threadId)
+        .pipe(Effect.mapError(threadManagementFailure));
+      if (!shell) {
+        return yield* failure(
+          "thread_not_found",
+          `Thread ${caller.thread.threadId} was not found.`,
+        );
+      }
+      return yield* coordinator
+        .listTeamAgents(shell.projectId, shell.id)
+        .pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code === "thread_not_found" ? "thread_not_found" : "orchestration_error",
+              error.message,
+            ),
+          ),
+        );
+    }),
+    createTeamAgent: Effect.fn("OrchestratorMcpService.createTeamAgent")(function* (scope, input) {
+      const caller = yield* requireThreadScope(scope, "t3_team_create_agent");
+      const coordinator = yield* requireGroupChatCoordinator;
+      return yield* coordinator
+        .createTeamAgent({
+          callerThreadId: caller.thread.threadId,
+          request: input,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code === "agent_not_found"
+                ? "invalid_request"
+                : error.code === "thread_not_found"
+                  ? "thread_not_found"
+                  : "orchestration_error",
+              error.message,
+            ),
+          ),
+        );
+    }),
+    updateTeamAgent: Effect.fn("OrchestratorMcpService.updateTeamAgent")(function* (scope, input) {
+      const caller = yield* requireThreadScope(scope, "t3_team_update_agent");
+      const coordinator = yield* requireGroupChatCoordinator;
+      return yield* coordinator
+        .updateTeamAgent({
+          callerThreadId: caller.thread.threadId,
+          request: input,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code === "agent_not_found"
+                ? "invalid_request"
+                : error.code === "thread_not_found"
+                  ? "thread_not_found"
+                  : "orchestration_error",
+              error.message,
+            ),
+          ),
+        );
+    }),
+    deleteTeamAgent: Effect.fn("OrchestratorMcpService.deleteTeamAgent")(function* (scope, input) {
+      const caller = yield* requireThreadScope(scope, "t3_team_delete_agent");
+      const coordinator = yield* requireGroupChatCoordinator;
+      return yield* coordinator
+        .deleteTeamAgent({
+          callerThreadId: caller.thread.threadId,
+          request: input,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code === "agent_not_found"
+                ? "invalid_request"
+                : error.code === "thread_not_found"
+                  ? "thread_not_found"
+                  : "orchestration_error",
+              error.message,
+            ),
+          ),
+        );
+    }),
+    askTeamAgent: Effect.fn("OrchestratorMcpService.askTeamAgent")(function* (scope, input) {
+      const caller = yield* requireThreadScope(scope, "t3_team_ask_agent");
+      const coordinator = yield* requireGroupChatCoordinator;
+      return yield* coordinator
+        .askTeamAgent({
+          callerThreadId: caller.thread.threadId,
+          targetAgent: input.agentNameOrId,
+          question: input.prompt,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            failure(
+              error.code === "agent_not_found"
+                ? "invalid_request"
+                : error.code === "thread_not_found"
+                  ? "thread_not_found"
+                  : "orchestration_error",
+              error.message,
+            ),
+          ),
+        );
+    }),
+    delegateTeamTask: Effect.fn("OrchestratorMcpService.delegateTeamTask")(
+      function* (scope, input) {
+        const caller = yield* requireThreadScope(scope, "t3_team_delegate_task");
+        const coordinator = yield* requireGroupChatCoordinator;
+        return yield* coordinator
+          .delegateTeamTask({
+            callerThreadId: caller.thread.threadId,
+            targetAgent: input.agentNameOrId,
+            title: input.title,
+            task: input.task,
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                error.code === "agent_not_found"
+                  ? "invalid_request"
+                  : error.code === "thread_not_found"
+                    ? "thread_not_found"
+                    : "orchestration_error",
+                error.message,
+              ),
+            ),
+          );
+      },
+    ),
+    reportTeamBlocker: Effect.fn("OrchestratorMcpService.reportTeamBlocker")(
+      function* (scope, input) {
+        const caller = yield* requireThreadScope(scope, "t3_team_report_blocker");
+        const coordinator = yield* requireGroupChatCoordinator;
+        return yield* coordinator
+          .reportTeamBlocker({
+            callerThreadId: caller.thread.threadId,
+            summary: input.summary,
+            details: input.questionForTeam,
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                error.code === "thread_not_found" ? "thread_not_found" : "orchestration_error",
+                error.message,
+              ),
+            ),
+          );
+      },
+    ),
   });
 });
 

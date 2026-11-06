@@ -12,32 +12,142 @@ import { McpAppFrame } from "./McpAppFrame";
 import { checkpointFileTotals } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
-import { useAssistantMessageText, useProject, useThreadShell } from "../../state/entities";
+import {
+  useAssistantMessageText,
+  useProject,
+  useQuietThreadShells,
+  useThreadShell,
+} from "../../state/entities";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { AssistantCitationSource } from "./AssistantCitationSource";
 import { resolveAssistantMessageCopyState } from "./MessagesTimeline.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { cn } from "~/lib/utils";
+import { cn, newThreadId } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { AgentAvatarBadge, resolveAgentProfileColor } from "../AgentProfileDialog";
+import { threadEnvironment } from "../../state/threads";
+import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const settings = useEnvironmentSettings(ctx.activeThreadEnvironmentId);
+  const threadShell = useThreadShell(ctx.threadRef);
+  const allThreads = useQuietThreadShells();
+  const createThread = useOrchestrationCommand(threadEnvironment.create);
   // The timeline holds a streaming message's row while only its text grows.
   const liveText = useAssistantMessageText(
     row.message.streaming ? ctx.threadRef : null,
     row.projectedItem?.item.id,
   );
-  const text = liveText ?? row.message.text;
-  const messageText = text || (row.message.streaming ? "" : "(empty response)");
+  const rawText = (liveText ?? row.message.text).replace(/<\/?group_chat_summary>/gi, "").trim();
+  const messageText = rawText || (row.message.streaming ? "" : "(empty response)");
+  const authorProfile = row.message.authorAgentId
+    ? (settings.agentProfiles.find((agent) => agent.id === row.message.authorAgentId) ?? null)
+    : row.message.authorAgentName
+      ? (settings.agentProfiles.find(
+          (agent) => agent.name.toLowerCase() === row.message.authorAgentName?.toLowerCase(),
+        ) ?? null)
+      : null;
+  const speakerName = row.message.authorAgentName ?? authorProfile?.name ?? null;
+  const speakerRole = row.message.authorAgentRole ?? authorProfile?.role ?? null;
+  const canOpenPersonalChat =
+    authorProfile !== null &&
+    ctx.activeThreadEnvironmentId !== null &&
+    threadShell?.projectId !== undefined &&
+    threadShell.channel?.kind !== "agent_personal";
+
+  const handleOpenSpeakerPersonalChat = async () => {
+    if (!authorProfile || !ctx.activeThreadEnvironmentId || !threadShell?.projectId) {
+      return;
+    }
+    const projectId = threadShell.projectId;
+    const existing = allThreads.find(
+      (thread) =>
+        thread.environmentId === ctx.activeThreadEnvironmentId &&
+        thread.projectId === projectId &&
+        thread.archivedAt === null &&
+        thread.deletedAt === null &&
+        thread.channel?.kind === "agent_personal" &&
+        thread.channel.agentProfileId === authorProfile.id,
+    );
+    if (existing) {
+      ctx.onOpenThread(existing.id);
+      return;
+    }
+    const threadId = newThreadId();
+    const created = await createThread({
+      environmentId: ctx.activeThreadEnvironmentId,
+      input: {
+        threadId,
+        projectId,
+        title: `${authorProfile.name} (${authorProfile.role})`,
+        modelSelection: authorProfile.modelSelection,
+        runtimeMode: authorProfile.runtimeMode,
+        interactionMode: authorProfile.interactionMode,
+        branch: null,
+        worktreePath: null,
+        channel: {
+          kind: "agent_personal",
+          projectId,
+          agentProfileId: authorProfile.id,
+        },
+      },
+    });
+    if (created._tag === "Success") {
+      ctx.onOpenThread(threadId);
+    }
+  };
 
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>T3 Code</MessageAuthorHeading>
+        <MessageAuthorHeading>
+          {speakerName ? `${speakerName}${speakerRole ? ` (${speakerRole})` : ""}` : "T3 Code"}
+        </MessageAuthorHeading>
+        {speakerName ? (
+          <div className="mb-1.5 flex items-center gap-2">
+            {canOpenPersonalChat ? (
+              <button
+                type="button"
+                onClick={() => void handleOpenSpeakerPersonalChat()}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-md py-0.5 pr-1.5 text-left transition-colors hover:bg-accent/60"
+              >
+                <AgentAvatarBadge
+                  name={speakerName}
+                  isOrchestrator={authorProfile?.isOrchestrator}
+                  color={authorProfile ? resolveAgentProfileColor(authorProfile) : "blue"}
+                />
+                <span className="text-xs font-semibold text-foreground hover:underline">
+                  {speakerName}
+                </span>
+                {speakerRole ? (
+                  <span className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                    {speakerRole}
+                  </span>
+                ) : null}
+              </button>
+            ) : (
+              <>
+                <AgentAvatarBadge
+                  name={speakerName}
+                  isOrchestrator={authorProfile?.isOrchestrator}
+                  color={authorProfile ? resolveAgentProfileColor(authorProfile) : "blue"}
+                />
+                <span className="text-xs font-semibold text-foreground">{speakerName}</span>
+                {speakerRole ? (
+                  <span className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                    {speakerRole}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
         <div data-thread-find-text="true">
           <AssistantCitationSource
             messageId={row.message.id}

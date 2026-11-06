@@ -11,6 +11,8 @@ import {
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
 import { useQuietThreadShell } from "../../state/entities";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { AgentAvatarBadge, resolveAgentProfileColor } from "../AgentProfileDialog";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -450,8 +452,27 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
   const userMessage = resolveUserMessagePresentation(row.message);
+  const settings = useEnvironmentSettings(ctx.activeThreadEnvironmentId);
+  const teamTaskRef = row.message.teamTaskRef;
+  const authorAgentProfile = row.message.authorAgentId
+    ? (settings.agentProfiles.find((agent) => agent.id === row.message.authorAgentId) ?? null)
+    : null;
+  const targetAgentProfile = row.message.targetAgentId
+    ? (settings.agentProfiles.find((agent) => agent.id === row.message.targetAgentId) ?? null)
+    : null;
+  const isTeamCompletionOrBlocker =
+    teamTaskRef?.kind === "completed" || teamTaskRef?.kind === "blocker";
+  const isTeamAssignedTask = teamTaskRef?.kind === "assigned";
+  const isTeamFloorHandoff =
+    !teamTaskRef &&
+    row.message.createdBy === "agent" &&
+    (row.message.authorAgentName !== undefined || row.message.targetAgentId !== undefined);
   // Messages from other agents fold to one line so the user's own messages stay easy to find.
-  const folded = userMessage.attribution === "agent";
+  const folded =
+    userMessage.attribution === "agent" &&
+    !isTeamCompletionOrBlocker &&
+    !isTeamAssignedTask &&
+    !isTeamFloorHandoff;
   const [expanded, setExpanded] = useState(false);
   const revealFoldRef = findRevealRef(() => setExpanded(true));
   const senderShell = useQuietThreadShell(
@@ -822,6 +843,139 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       </div>
     </div>
   );
+  if (isTeamFloorHandoff) {
+    const fromLabel = row.message.authorAgentName
+      ? `${row.message.authorAgentName}${row.message.authorAgentRole ? ` (${row.message.authorAgentRole})` : ""}`
+      : "Team Lead";
+    const toLabel = targetAgentProfile
+      ? `${targetAgentProfile.name} (${targetAgentProfile.role})`
+      : "Team Member";
+    return (
+      <div className="my-1 flex items-center gap-2 rounded-lg border border-border/60 bg-muted/25 px-3 py-1.5 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{fromLabel}</span>
+        <span>→</span>
+        <span className="font-medium text-foreground">{toLabel}</span>
+        {plainText && !plainText.startsWith("[Floor returned to") ? (
+          <span className="min-w-0 flex-1 truncate italic">&ldquo;{plainText}&rdquo;</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (isTeamCompletionOrBlocker && teamTaskRef) {
+    const speakerName = row.message.authorAgentName ?? teamTaskRef.agentName;
+    const speakerRole = row.message.authorAgentRole ?? teamTaskRef.agentRole;
+    const summaryTagMatch = plainText.match(
+      /<group_chat_summary>([\s\S]*?)<\/group_chat_summary>/i,
+    );
+    const rawCandidate = summaryTagMatch?.[1]?.trim() ?? plainText;
+    const proseParagraphs = rawCandidate
+      .replace(/^⚠️\s*\*\*Blocker Reported by[^*]*\*\*:\s*/i, "")
+      .replace(/```[\s\S]*?```/g, "")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          line.length > 0 &&
+          !line.startsWith("#") &&
+          !/^[-*_]{3,}$/.test(line) &&
+          !/^(?:\d+\.|[-*•])\s+/.test(line),
+      );
+    const shortParagraph = proseParagraphs.slice(0, 2).join(" ").trim();
+    const fallbackShort = rawCandidate
+      .replace(/^#+\s+/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const baseText =
+      shortParagraph.length > 0
+        ? shortParagraph
+        : fallbackShort.length > 0
+          ? fallbackShort
+          : `Completed ${teamTaskRef.title}.`;
+    const conciseText =
+      baseText.length <= 360 ? baseText : `${baseText.slice(0, 357).trimEnd()}...`;
+
+    return (
+      <div className="relative min-w-0 px-1 py-0.5">
+        <MessageAuthorHeading>{`${speakerName} (${speakerRole})`}</MessageAuthorHeading>
+        <div className="mb-1.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => ctx.onOpenThread(teamTaskRef.personalThreadId)}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-md py-0.5 pr-1.5 text-left transition-colors hover:bg-accent/60"
+          >
+            <AgentAvatarBadge
+              name={speakerName}
+              isOrchestrator={authorAgentProfile?.isOrchestrator}
+              color={authorAgentProfile ? resolveAgentProfileColor(authorAgentProfile) : "emerald"}
+            />
+            <span className="text-xs font-semibold text-foreground hover:underline">
+              {speakerName}
+            </span>
+            <span className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+              {speakerRole}
+            </span>
+          </button>
+        </div>
+        <div>
+          <ChatMarkdown
+            text={conciseText}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            isStreaming={false}
+            skills={ctx.skills}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isTeamAssignedTask && teamTaskRef) {
+    const delegatorName = row.message.authorAgentName ?? "Orchestrator";
+    const delegatorRole = row.message.authorAgentRole ?? "Team Lead";
+    const escapedTitle = teamTaskRef.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cleanedTaskText = plainText
+      .replace(/^\[Delegated Team Task[^\]]*\]\s*/i, "")
+      .replace(
+        escapedTitle.length > 0
+          ? new RegExp(`^Task:\\s*${escapedTitle}\\s*`, "i")
+          : /^Task:\s*[^\n]+\n*/i,
+        "",
+      )
+      .trim();
+    return (
+      <div className="my-1.5 rounded-xl border border-primary/25 bg-primary/5 p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="rounded-md bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+              Delegated Task
+            </span>
+            <span className="font-semibold text-foreground">{teamTaskRef.title}</span>
+            <span className="text-muted-foreground">
+              from {delegatorName} ({delegatorRole})
+            </span>
+          </div>
+          {senderThreadId ? (
+            <InlineButton tone="muted" onClick={() => ctx.onOpenThread(senderThreadId)}>
+              ← Back to Group Chat
+            </InlineButton>
+          ) : null}
+        </div>
+        <div className="text-sm text-foreground">
+          <ChatMarkdown
+            text={cleanedTaskText.length > 0 ? cleanedTaskText : plainText}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            isStreaming={false}
+            skills={ctx.skills}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="group @container flex flex-col items-end gap-1"

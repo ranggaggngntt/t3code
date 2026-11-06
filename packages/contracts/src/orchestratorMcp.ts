@@ -2,8 +2,10 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
+import { AgentInlineSkill } from "./agentProfile.ts";
 import { AuthMcpClientAccess } from "./auth.ts";
 import {
+  AgentProfileId,
   ContextTransferId,
   EnvironmentId,
   IsoDateTime,
@@ -862,6 +864,193 @@ export const OrchestratorMcpDeleteScheduledTaskResult = Schema.Struct({
 });
 export type OrchestratorMcpDeleteScheduledTaskResult =
   typeof OrchestratorMcpDeleteScheduledTaskResult.Type;
+
+export const OrchestratorMcpTeamAgentSummary = Schema.Struct({
+  agentProfileId: AgentProfileId,
+  name: TrimmedNonEmptyString,
+  role: TrimmedNonEmptyString,
+  isOrchestrator: Schema.Boolean,
+  providerInstanceId: ProviderInstanceId,
+  model: TrimmedNonEmptyString,
+  modelOptions: Schema.optional(Schema.Array(ProviderOptionSelection)),
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  responsibilities: Schema.Array(TrimmedNonEmptyString),
+  systemInstructions: Schema.optional(Schema.String),
+  agentsMdContent: Schema.optional(Schema.String),
+  agentsMdPath: Schema.optional(Schema.String),
+  enabledSkillPaths: Schema.optional(Schema.Array(Schema.String)),
+  customSkills: Schema.optional(Schema.Array(AgentInlineSkill)),
+  personalThreadId: Schema.optional(Schema.NullOr(ThreadId)),
+});
+export type OrchestratorMcpTeamAgentSummary = typeof OrchestratorMcpTeamAgentSummary.Type;
+
+export const OrchestratorMcpTeamListAgentsResult = Schema.Struct({
+  agents: Schema.Array(OrchestratorMcpTeamAgentSummary),
+});
+export type OrchestratorMcpTeamListAgentsResult = typeof OrchestratorMcpTeamListAgentsResult.Type;
+
+export const OrchestratorMcpTeamCreateAgentInput = Schema.Struct({
+  name: TrimmedNonEmptyString.annotate({
+    description: "Name of the new agent.",
+  }),
+  role: TrimmedNonEmptyString.annotate({
+    description: "Role or title of the agent (e.g., Frontend Engineer, QA Lead, Architect).",
+  }),
+  isOrchestrator: Schema.optional(Schema.Boolean),
+  providerInstanceId: Schema.optional(ProviderInstanceId).annotate({
+    description:
+      "Provider instance id from `orchestrator_capabilities` (e.g., 'codex', 'claudeAgent', 'antigravity').",
+  }),
+  model: Schema.optional(TrimmedNonEmptyString).annotate({
+    description:
+      "Model slug from `orchestrator_capabilities` (e.g., 'gpt-5.3-codex', 'claude-sonnet-4-6').",
+  }),
+  modelOptions: Schema.optional(OrchestratorMcpTargetOptions).annotate({
+    description:
+      "Optional model options from `orchestrator_capabilities`, such as {effort:'high'}.",
+  }),
+  runtimeMode: Schema.optional(RuntimeMode),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+  responsibilities: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  systemInstructions: Schema.optional(Schema.String),
+  agentsMdContent: Schema.optional(Schema.String).annotate({
+    description: "Custom per-agent AGENTS.md markdown instructions.",
+  }),
+  agentsMdPath: Schema.optional(TrimmedNonEmptyString).annotate({
+    description: "Optional external AGENTS.md file path on disk.",
+  }),
+  enabledSkillPaths: Schema.optional(Schema.Array(TrimmedNonEmptyString)).annotate({
+    description: "Optional workspace or external skill folder/SKILL.md paths.",
+  }),
+  customSkills: Schema.optional(Schema.Array(AgentInlineSkill)).annotate({
+    description: "Optional custom inline skills (id, name, description, content).",
+  }),
+  sharedAcrossProjects: Schema.optional(Schema.Boolean),
+  addToCurrentGroup: Schema.optional(Schema.Boolean),
+});
+export type OrchestratorMcpTeamCreateAgentInput = typeof OrchestratorMcpTeamCreateAgentInput.Type;
+
+export const OrchestratorMcpTeamCreateAgentResult = Schema.Struct({
+  created: Schema.Boolean,
+  agent: OrchestratorMcpTeamAgentSummary,
+});
+export type OrchestratorMcpTeamCreateAgentResult = typeof OrchestratorMcpTeamCreateAgentResult.Type;
+
+export const OrchestratorMcpTeamUpdateAgentInput = Schema.Struct({
+  agentNameOrId: TrimmedNonEmptyString.annotate({
+    description: "Current name, role, or id of the agent to look up and update.",
+  }),
+  name: Schema.optional(TrimmedNonEmptyString),
+  role: Schema.optional(TrimmedNonEmptyString),
+  isOrchestrator: Schema.optional(Schema.Boolean),
+  providerInstanceId: Schema.optional(ProviderInstanceId).annotate({
+    description: "New provider instance id from `orchestrator_capabilities`.",
+  }),
+  model: Schema.optional(TrimmedNonEmptyString).annotate({
+    description: "New model slug from `orchestrator_capabilities`.",
+  }),
+  modelOptions: Schema.optional(Schema.NullOr(OrchestratorMcpTargetOptions)).annotate({
+    description: "New model options from `orchestrator_capabilities`, or null to clear.",
+  }),
+  runtimeMode: Schema.optional(RuntimeMode),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+  responsibilities: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  systemInstructions: Schema.optional(Schema.String),
+  agentsMdContent: Schema.optional(Schema.String),
+  agentsMdPath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  enabledSkillPaths: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  customSkills: Schema.optional(Schema.Array(AgentInlineSkill)),
+  sharedAcrossProjects: Schema.optional(Schema.Boolean),
+  addToCurrentGroup: Schema.optional(Schema.Boolean),
+  removeFromCurrentGroup: Schema.optional(Schema.Boolean),
+});
+export type OrchestratorMcpTeamUpdateAgentInput = typeof OrchestratorMcpTeamUpdateAgentInput.Type;
+
+export const OrchestratorMcpTeamUpdateAgentResult = Schema.Struct({
+  updated: Schema.Boolean,
+  agent: OrchestratorMcpTeamAgentSummary,
+});
+export type OrchestratorMcpTeamUpdateAgentResult = typeof OrchestratorMcpTeamUpdateAgentResult.Type;
+
+export const OrchestratorMcpTeamDeleteAgentInput = Schema.Struct({
+  agentNameOrId: TrimmedNonEmptyString.annotate({
+    description: "Name or id of the agent to delete.",
+  }),
+});
+export type OrchestratorMcpTeamDeleteAgentInput = typeof OrchestratorMcpTeamDeleteAgentInput.Type;
+
+export const OrchestratorMcpTeamDeleteAgentResult = Schema.Struct({
+  deleted: Schema.Boolean,
+  agentProfileId: AgentProfileId,
+  name: TrimmedNonEmptyString,
+});
+export type OrchestratorMcpTeamDeleteAgentResult = typeof OrchestratorMcpTeamDeleteAgentResult.Type;
+
+export const OrchestratorMcpTeamAskAgentInput = Schema.Struct({
+  agentNameOrId: TrimmedNonEmptyString.annotate({
+    description: "Name or id of the teammate agent to invite into the Group Chat discussion.",
+  }),
+  prompt: TrimmedNonEmptyString.annotate({
+    description: "Specific question or topic for the teammate to respond to in Group Chat.",
+  }),
+});
+export type OrchestratorMcpTeamAskAgentInput = typeof OrchestratorMcpTeamAskAgentInput.Type;
+
+export const OrchestratorMcpTeamAskAgentResult = Schema.Struct({
+  queued: Schema.Boolean,
+  targetAgentProfileId: AgentProfileId,
+  targetAgentName: TrimmedNonEmptyString,
+  targetAgentRole: TrimmedNonEmptyString,
+  note: Schema.String,
+});
+export type OrchestratorMcpTeamAskAgentResult = typeof OrchestratorMcpTeamAskAgentResult.Type;
+
+export const OrchestratorMcpTeamDelegateTaskInput = Schema.Struct({
+  agentNameOrId: TrimmedNonEmptyString.annotate({
+    description:
+      "Name or id of the specialist agent whose Personal Agent Chat will execute the task.",
+  }),
+  title: TrimmedNonEmptyString.annotate({
+    description: "Short task title shown on the Group Chat task assignment card.",
+  }),
+  task: TrimmedNonEmptyString.annotate({
+    description:
+      "Full task instructions, requirements, and context for the agent to execute in their Personal Agent Chat.",
+  }),
+});
+export type OrchestratorMcpTeamDelegateTaskInput = typeof OrchestratorMcpTeamDelegateTaskInput.Type;
+
+export const OrchestratorMcpTeamDelegateTaskResult = Schema.Struct({
+  taskId: NodeId,
+  agentProfileId: AgentProfileId,
+  agentName: TrimmedNonEmptyString,
+  agentRole: TrimmedNonEmptyString,
+  personalThreadId: ThreadId,
+  personalRunId: Schema.NullOr(RunId),
+  status: Schema.Literals(["started", "queued"]),
+});
+export type OrchestratorMcpTeamDelegateTaskResult =
+  typeof OrchestratorMcpTeamDelegateTaskResult.Type;
+
+export const OrchestratorMcpTeamReportBlockerInput = Schema.Struct({
+  summary: TrimmedNonEmptyString.annotate({
+    description: "Concise summary of the blocker or question that requires Group Chat discussion.",
+  }),
+  questionForTeam: Schema.optional(TrimmedNonEmptyString).annotate({
+    description: "Specific question for the team or orchestrator.",
+  }),
+});
+export type OrchestratorMcpTeamReportBlockerInput =
+  typeof OrchestratorMcpTeamReportBlockerInput.Type;
+
+export const OrchestratorMcpTeamReportBlockerResult = Schema.Struct({
+  reported: Schema.Boolean,
+  groupChatThreadId: ThreadId,
+  messageId: MessageId,
+});
+export type OrchestratorMcpTeamReportBlockerResult =
+  typeof OrchestratorMcpTeamReportBlockerResult.Type;
 
 export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFailure>()(
   "OrchestratorMcpFailure",

@@ -3,6 +3,7 @@ import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
+  type AgentProfileId,
   CommandId,
   type ChatAttachment,
   type MessageId,
@@ -12,6 +13,8 @@ import {
   type OrchestrationV2DelegatedFrom,
   type OrchestrationV2LinkOrigin,
   type OrchestrationV2ProviderThreadNativeMetadata,
+  type OrchestrationV2TeamTaskRef,
+  type OrchestrationV2ThreadChannel,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
   type ProviderInteractionMode,
@@ -72,6 +75,11 @@ export interface ThreadLaunchInitialMessage {
   readonly messageId?: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
+  readonly authorAgentId?: AgentProfileId;
+  readonly authorAgentName?: string;
+  readonly authorAgentRole?: string;
+  readonly targetAgentId?: AgentProfileId;
+  readonly teamTaskRef?: OrchestrationV2TeamTaskRef;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
@@ -82,6 +90,7 @@ export interface ThreadLaunchInput {
   readonly threadId?: ThreadId;
   readonly reuseExistingThread?: boolean;
   readonly projectId: ProjectId;
+  readonly channel?: OrchestrationV2ThreadChannel;
   readonly title: string;
   readonly generateTitle?: boolean;
   readonly modelSelection: ModelSelection;
@@ -935,6 +944,7 @@ const make = Effect.gen(function* () {
                 commandId: input.commandId,
                 threadId: candidateThreadId,
                 projectId: input.projectId,
+                ...(input.channel === undefined ? {} : { channel: input.channel }),
                 title: input.title,
                 modelSelection: input.modelSelection,
                 runtimeMode: input.runtimeMode,
@@ -991,6 +1001,21 @@ const make = Effect.gen(function* () {
               ...(input.initialMessage.senderThreadId === undefined
                 ? {}
                 : { senderThreadId: input.initialMessage.senderThreadId }),
+              ...(input.initialMessage.authorAgentId === undefined
+                ? {}
+                : { authorAgentId: input.initialMessage.authorAgentId }),
+              ...(input.initialMessage.authorAgentName === undefined
+                ? {}
+                : { authorAgentName: input.initialMessage.authorAgentName }),
+              ...(input.initialMessage.authorAgentRole === undefined
+                ? {}
+                : { authorAgentRole: input.initialMessage.authorAgentRole }),
+              ...(input.initialMessage.targetAgentId === undefined
+                ? {}
+                : { targetAgentId: input.initialMessage.targetAgentId }),
+              ...(input.initialMessage.teamTaskRef === undefined
+                ? {}
+                : { teamTaskRef: input.initialMessage.teamTaskRef }),
               attachments: input.initialMessage.attachments,
               ...(input.initialMessage.context ? { context: input.initialMessage.context } : {}),
               ...(input.generateTitle === true ? { titleSeed: input.title } : {}),

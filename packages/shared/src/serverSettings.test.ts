@@ -1,4 +1,5 @@
 import {
+  AgentProfileId,
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
   ProviderDriverKind,
@@ -7,6 +8,7 @@ import {
   SecretProviderKind,
   ServerSettings,
   ServerSettingsPatch,
+  TeamGroupId,
   UsageLimitSourceId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -990,5 +992,46 @@ describe("synchronized model preferences", () => {
         setModelFavorites: [{ provider, model: "sol", favorite: false }],
       }).favorites,
     ).toEqual([{ provider: otherProvider, model: "sol" }]);
+
+    const nowIso = "2026-11-04T00:00:00.000Z";
+    const patchedAgents = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      agentProfiles: [
+        {
+          id: AgentProfileId.make("agent-vex"),
+          name: "Vex",
+          role: "CEO",
+          isOrchestrator: true,
+          responsibilities: ["Lead team"],
+          systemInstructions: "Lead discussions.",
+          modelSelection: { instanceId: provider, model: "sol" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ],
+    });
+    expect(patchedAgents.agentProfiles).toHaveLength(1);
+    expect(patchedAgents.agentProfiles[0]?.name).toBe("Vex");
+    expect(applyServerSettingsPatch(patchedAgents, { agentProfiles: [] }).agentProfiles).toEqual(
+      [],
+    );
+
+    const patchedGroups = applyServerSettingsPatch(patchedAgents, {
+      teamGroups: [
+        {
+          id: TeamGroupId.make("group-1"),
+          projectId: ProjectId.make("project-1"),
+          name: "Core Engineering",
+          memberAgentIds: [AgentProfileId.make("agent-vex")],
+          orchestratorAgentId: AgentProfileId.make("agent-vex"),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ],
+    });
+    expect(patchedGroups.teamGroups).toHaveLength(1);
+    expect(patchedGroups.teamGroups[0]?.name).toBe("Core Engineering");
+    expect(applyServerSettingsPatch(patchedGroups, { teamGroups: [] }).teamGroups).toEqual([]);
   });
 });

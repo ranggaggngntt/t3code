@@ -223,6 +223,55 @@ const handlers = {
         return yield* service.interruptThread(scope, input);
       }),
   ),
+  t3_team_list_agents: McpToolAccess.readsAsCaller(() =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.listTeamAgents(scope);
+    }),
+  ),
+  t3_team_create_agent: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.createTeamAgent(scope, input);
+    }),
+  ),
+  t3_team_update_agent: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.updateTeamAgent(scope, input);
+    }),
+  ),
+  t3_team_delete_agent: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.deleteTeamAgent(scope, input);
+    }),
+  ),
+  t3_team_ask_agent: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.askTeamAgent(scope, input);
+    }),
+  ),
+  t3_team_delegate_task: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.delegateTeamTask(scope, input);
+    }),
+  ),
+  t3_team_report_blocker: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      return yield* service.reportTeamBlocker(scope, input);
+    }),
+  ),
 } satisfies McpToolAccess.Handlers<typeof OrchestratorToolkit.tools>;
 
 export const layer = McpToolAccess.toLayer(OrchestratorToolkit, handlers);

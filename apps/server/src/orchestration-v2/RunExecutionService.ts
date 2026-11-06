@@ -32,6 +32,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -47,6 +48,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
 import type { ProjectionStoreV2Error } from "./ProjectionStore.ts";
 import {
   knownProviderFailureMessage,
@@ -54,6 +56,12 @@ import {
   makeProviderFailureTurnItem,
 } from "@t3tools/provider-core/server/failure";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
+import {
+  buildAgentTurnPrompt,
+  loadAgentExternalCustomization,
+  resolveActiveAgentForTurn,
+  toAgentAttribution,
+} from "./TeamAgentContext.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import { userFacingDatabaseErrorMessage } from "./UserFacingErrors.ts";
 
@@ -579,6 +587,7 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
+  readonly agentAttribution?: ProviderEventIngestor.ProviderEventIngestInput["agentAttribution"];
 }
 
 export interface RunExecutionServiceV2Shape {
@@ -612,6 +621,7 @@ export const layer: Layer.Layer<
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
+    const projectionStoreOption = yield* Effect.serviceOption(ProjectionStore.ProjectionStoreV2);
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
     const previewAgentActivity = yield* PreviewAgentActivity.PreviewAgentActivity;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
@@ -922,14 +932,59 @@ export const layer: Layer.Layer<
           failure,
           threadDisposition: "reusable",
         });
-        const responseStreamingMode = yield* Effect.gen(function* () {
-          const responseStreamingMode = yield* serverSettings.getSettings.pipe(
-            Effect.map(
-              (settings) =>
-                resolveProjectSettings(settings, input.appThread.projectId).settings
-                  .responseStreamingMode,
-            ),
-          );
+        const runPreparation = yield* Effect.gen(function* () {
+          const settings = yield* serverSettings.getSettings;
+          const responseStreamingMode = resolveProjectSettings(settings, input.appThread.projectId)
+            .settings.responseStreamingMode;
+          const groupChatRecords =
+            input.appThread.channel !== undefined &&
+            settings.agentProfiles.length > 0 &&
+            Option.isSome(projectionStoreOption)
+              ? yield* projectionStoreOption.value
+                  .getThreadRecords(input.appThread.id, ["messages", "turnItems"], {
+                    turnItemTypes: ["assistant_message"],
+                  })
+                  .pipe(Effect.orElseSucceed(() => undefined))
+              : undefined;
+          const triggerMessage = groupChatRecords?.messages.find(
+            (candidate) => candidate.id === input.message.messageId,
+          ) ?? {
+            text: input.message.text,
+          };
+          const activeAgent = resolveActiveAgentForTurn({
+            thread: input.appThread,
+            message: triggerMessage,
+            agentProfiles: settings.agentProfiles,
+            teamGroups: settings.teamGroups,
+          });
+          const agentAttribution =
+            activeAgent === undefined ? input.agentAttribution : toAgentAttribution(activeAgent);
+          const isSlashCommand =
+            input.message.attachments.length === 0 &&
+            input.message.text.trimStart().startsWith("/");
+          const externalCustomization =
+            activeAgent === undefined || isSlashCommand
+              ? undefined
+              : yield* loadAgentExternalCustomization({
+                  agent: activeAgent,
+                  workspaceRoot: input.checkpointScope.cwd,
+                });
+          const enrichedMessage =
+            activeAgent === undefined || isSlashCommand
+              ? input.message
+              : {
+                  ...input.message,
+                  text: buildAgentTurnPrompt({
+                    thread: input.appThread,
+                    activeAgent,
+                    agentProfiles: settings.agentProfiles,
+                    teamGroups: settings.teamGroups,
+                    externalCustomization,
+                    userText: input.message.text,
+                    currentMessageId: input.message.messageId,
+                    ...(groupChatRecords === undefined ? {} : { groupChatRecords }),
+                  }),
+                };
           // Side chats share the parent's worktree; a snapshot would capture the parent's edits.
           yield* (
             input.appThread.lineage.sideChat === true
@@ -954,7 +1009,11 @@ export const layer: Layer.Layer<
           ) {
             return null;
           }
-          return responseStreamingMode;
+          return {
+            responseStreamingMode,
+            agentAttribution,
+            effectiveMessage: enrichedMessage,
+          };
         }).pipe(
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
@@ -998,9 +1057,10 @@ export const layer: Layer.Layer<
               }),
           ),
         );
-        if (responseStreamingMode === null) {
+        if (runPreparation === null) {
           return;
         }
+        const { responseStreamingMode, agentAttribution, effectiveMessage } = runPreparation;
         const terminalEvent = yield* Ref.make<ProviderTerminalEvent | null>(null);
         const latestTurnItemOrdinal = yield* Ref.make(input.providerTurnOrdinal * 100);
         const latestProviderThread = yield* Ref.make(input.providerThread);
@@ -1450,6 +1510,7 @@ export const layer: Layer.Layer<
                   runId: input.run.id,
                   nodeId: input.rootNode.id,
                   event: deliveredEvent,
+                  ...(agentAttribution === undefined ? {} : { agentAttribution }),
                   ...(isRootProviderThreadUpdate
                     ? rootTerminalAlreadySeen
                       ? {
@@ -1709,7 +1770,7 @@ export const layer: Layer.Layer<
           attemptId: input.attemptId,
           rootNodeId: input.rootNode.id,
           providerThread: input.providerThread,
-          message: input.message,
+          message: effectiveMessage,
           modelSelection: input.modelSelection,
           runtimePolicy: input.runtimePolicy,
           ...(appContext.length === 0 ? {} : { appContext }),

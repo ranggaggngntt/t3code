@@ -188,6 +188,7 @@ import {
   isForkableSourceRunStatus,
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
+import { resolveActiveAgentForTurn } from "./TeamAgentContext.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
@@ -2144,6 +2145,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ...(queuedMessage.idleCompaction === undefined
             ? {}
             : { idleCompaction: queuedMessage.idleCompaction }),
+          ...pickAgentAttributionFields(queuedMessage),
         }),
         providerThreadId: queuedProviderThread.id,
         inputIntent: "queued_turn",
@@ -2827,6 +2829,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       creationSource: command.creationSource,
       id: command.threadId,
       projectId: command.projectId,
+      ...(command.channel === undefined ? {} : { channel: command.channel }),
       title: command.title,
       providerInstanceId: command.modelSelection.instanceId,
       modelSelection: command.modelSelection,
@@ -4729,6 +4732,22 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  function pickAgentAttributionFields(input: {
+    readonly authorAgentId?: OrchestrationV2ConversationMessage["authorAgentId"];
+    readonly authorAgentName?: OrchestrationV2ConversationMessage["authorAgentName"];
+    readonly authorAgentRole?: OrchestrationV2ConversationMessage["authorAgentRole"];
+    readonly targetAgentId?: OrchestrationV2ConversationMessage["targetAgentId"];
+    readonly teamTaskRef?: OrchestrationV2ConversationMessage["teamTaskRef"];
+  }) {
+    return {
+      ...(input.authorAgentId === undefined ? {} : { authorAgentId: input.authorAgentId }),
+      ...(input.authorAgentName === undefined ? {} : { authorAgentName: input.authorAgentName }),
+      ...(input.authorAgentRole === undefined ? {} : { authorAgentRole: input.authorAgentRole }),
+      ...(input.targetAgentId === undefined ? {} : { targetAgentId: input.targetAgentId }),
+      ...(input.teamTaskRef === undefined ? {} : { teamTaskRef: input.teamTaskRef }),
+    };
+  }
+
   const dispatchSteerIntoRun = Effect.fn("Orchestrator.dispatchSteerIntoRun")(function* (input: {
     readonly command: Extract<
       OrchestrationV2Command,
@@ -4757,6 +4776,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
     readonly createdBy: OrchestrationV2ConversationMessage["createdBy"];
     readonly creationSource: OrchestrationV2ConversationMessage["creationSource"];
+    readonly authorAgentId?: OrchestrationV2ConversationMessage["authorAgentId"];
+    readonly authorAgentName?: OrchestrationV2ConversationMessage["authorAgentName"];
+    readonly authorAgentRole?: OrchestrationV2ConversationMessage["authorAgentRole"];
+    readonly targetAgentId?: OrchestrationV2ConversationMessage["targetAgentId"];
+    readonly teamTaskRef?: OrchestrationV2ConversationMessage["teamTaskRef"];
     readonly scheduledTaskId?: OrchestrationV2ConversationMessage["scheduledTaskId"];
     readonly senderThreadId?: OrchestrationV2ConversationMessage["senderThreadId"];
     readonly idleCompaction?: OrchestrationV2ConversationMessage["idleCompaction"];
@@ -4912,6 +4936,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         const message: OrchestrationV2ConversationMessage = {
           createdBy: input.createdBy,
           creationSource: input.creationSource,
+          ...pickAgentAttributionFields(input),
           ...(input.delegatedCompletion === undefined
             ? {}
             : { delegatedCompletion: input.delegatedCompletion }),
@@ -4936,6 +4961,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         const turnItem: OrchestrationV2TurnItem = {
           createdBy: input.createdBy,
           creationSource: input.creationSource,
+          ...pickAgentAttributionFields(input),
           ...(input.scheduledTaskId === undefined
             ? {}
             : { scheduledTaskId: input.scheduledTaskId }),
@@ -5678,7 +5704,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ]);
       projection = applyToProjection(projection, event);
     }
-    const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+    let activeChannelAgentModelSelection: ModelSelection | undefined;
+    if (projection.thread.channel?.kind === "group_chat") {
+      const settings = yield* serverSettings.getSettings.pipe(
+        Effect.orElseSucceed(() => ({ agentProfiles: [], teamGroups: [] })),
+      );
+      const activeChannelAgent = resolveActiveAgentForTurn({
+        thread: projection.thread,
+        message: {
+          text: command.text,
+          ...(command.targetAgentId === undefined ? {} : { targetAgentId: command.targetAgentId }),
+        },
+        agentProfiles: settings.agentProfiles,
+        teamGroups: settings.teamGroups,
+      });
+      if (activeChannelAgent !== undefined) {
+        activeChannelAgentModelSelection = activeChannelAgent.modelSelection;
+      }
+    }
+    const modelSelection =
+      activeChannelAgentModelSelection ??
+      command.modelSelection ??
+      projection.thread.modelSelection;
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,
@@ -5923,6 +5970,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         attachments: command.attachments,
         createdBy: command.createdBy,
         creationSource: command.creationSource,
+        ...pickAgentAttributionFields(command),
         ...(command.scheduledTaskId === undefined
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
@@ -6158,6 +6206,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const message: OrchestrationV2ConversationMessage = {
         createdBy: command.createdBy,
         creationSource: command.creationSource,
+        ...pickAgentAttributionFields(command),
         ...(command.scheduledTaskId === undefined
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
@@ -6524,6 +6573,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const message: OrchestrationV2ConversationMessage = {
         createdBy: command.createdBy,
         creationSource: command.creationSource,
+        ...pickAgentAttributionFields(command),
         ...(command.scheduledTaskId === undefined
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
@@ -6546,6 +6596,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const turnItem: OrchestrationV2TurnItem = {
         createdBy: command.createdBy,
         creationSource: command.creationSource,
+        ...pickAgentAttributionFields(command),
         ...(command.scheduledTaskId === undefined
           ? {}
           : { scheduledTaskId: command.scheduledTaskId }),
@@ -7276,6 +7327,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const message: OrchestrationV2ConversationMessage = {
       createdBy: command.createdBy,
       creationSource: command.creationSource,
+      ...pickAgentAttributionFields(command),
       ...(command.scheduledTaskId === undefined
         ? {}
         : { scheduledTaskId: command.scheduledTaskId }),
@@ -7298,6 +7350,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const turnItem: OrchestrationV2TurnItem = {
       createdBy: command.createdBy,
       creationSource: command.creationSource,
+      ...pickAgentAttributionFields(command),
       ...(command.scheduledTaskId === undefined
         ? {}
         : { scheduledTaskId: command.scheduledTaskId }),
@@ -9687,6 +9740,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ...(queuedMessage.context ? { context: queuedMessage.context } : {}),
       createdBy: queuedMessage.createdBy,
       creationSource: queuedMessage.creationSource,
+      ...pickAgentAttributionFields(queuedMessage),
       ...(queuedMessage.scheduledTaskId === undefined
         ? {}
         : { scheduledTaskId: queuedMessage.scheduledTaskId }),

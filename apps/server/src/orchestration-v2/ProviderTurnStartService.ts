@@ -793,19 +793,41 @@ export const layer: Layer.Layer<
         });
         if (!repaired.committed) return;
       }
+      const isGroupChatTurn = projection.thread.channel?.kind === "group_chat";
+      const latestPriorRunOnProviderThread = projection.runs.findLast(
+        (source) =>
+          source.ordinal < run.ordinal &&
+          source.startedAt !== null &&
+          source.providerThreadId === providerThread.id,
+      );
+      const groupChatNeedsFreshTrajectory =
+        isGroupChatTurn && providerThread.nativeThreadRef !== null;
+      const antigravityNeedsFreshTrajectory =
+        !isGroupChatTurn &&
+        providerThread.driver === "antigravity" &&
+        providerThread.nativeThreadRef !== null &&
+        latestPriorRunOnProviderThread !== undefined &&
+        (latestPriorRunOnProviderThread.modelSelection.model !== run.modelSelection.model ||
+          latestPriorRunOnProviderThread.status === "failed");
+      const forceFreshNativeThread =
+        groupChatNeedsFreshTrajectory || antigravityNeedsFreshTrajectory;
+      const wasSessionLiveBeforeOpen = forceFreshNativeThread
+        ? yield* providerSessions.isLive(providerSessionId)
+        : false;
       const sessionResult = yield* Effect.result(
         providerSessions.open({
           threadId: projection.thread.id,
           providerSessionId,
           modelSelection: run.modelSelection,
           runtimePolicy: resolvedRuntimePolicy,
-          ...(existingSessionProjection === undefined
+          ...(existingSessionProjection === undefined || forceFreshNativeThread
             ? {}
             : { resumeFromSession: existingSessionProjection }),
-          ...(providerThread.nativeThreadRef?.nativeId == null
+          ...(providerThread.nativeThreadRef?.nativeId == null || forceFreshNativeThread
             ? {}
             : { initialNativeThreadId: providerThread.nativeThreadRef.nativeId }),
-          ...(providerThread.nativeMetadata?.itemIdentityVersion === undefined
+          ...(providerThread.nativeMetadata?.itemIdentityVersion === undefined ||
+          forceFreshNativeThread
             ? {}
             : {
                 initialProviderItemIdentityVersion:
@@ -1244,7 +1266,10 @@ export const layer: Layer.Layer<
           });
           return loaded;
         }
-        if (providerThread.nativeThreadRef === null) {
+        if (providerThread.nativeThreadRef === null || groupChatNeedsFreshTrajectory) {
+          if (groupChatNeedsFreshTrajectory) {
+            resumeFellBack = true;
+          }
           // Pass the stored provider row for adoption; adapter-minted duplicates make activeProviderThreadId flap.
           return yield* loadFromProvider(
             session.ensureThread({
@@ -1253,7 +1278,12 @@ export const layer: Layer.Layer<
               modelSelection: run.modelSelection,
               runtimePolicy: resolvedRuntimePolicy,
               providerSessionId,
-              existingProviderThread: providerThread,
+              existingProviderThread: groupChatNeedsFreshTrajectory
+                ? { ...providerThread, nativeThreadRef: null }
+                : providerThread,
+              ...(groupChatNeedsFreshTrajectory
+                ? { forceNewNativeThread: wasSessionLiveBeforeOpen }
+                : {}),
             }),
           );
         }
@@ -1264,14 +1294,16 @@ export const layer: Layer.Layer<
             handoff.delivery?.status === "pending",
         );
         const resumed = yield* Effect.result(
-          uncertainDelivery
+          uncertainDelivery || antigravityNeedsFreshTrajectory
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
                   threadId: projection.thread.id,
                   providerThreadId: providerThread.id,
                   runId,
-                  cause: "Uncertain native history injection",
+                  cause: antigravityNeedsFreshTrajectory
+                    ? "Antigravity model switch or failed trajectory requires fresh native session"
+                    : "Uncertain native history injection",
                 }),
               )
             : session.resumeThread({
@@ -1365,7 +1397,7 @@ export const layer: Layer.Layer<
             providerSessionId,
             // Clear the native ref to force a fresh session while preserving row identity.
             existingProviderThread: { ...providerThread, nativeThreadRef: null },
-            forceNewNativeThread: true,
+            forceNewNativeThread: !forceFreshNativeThread || wasSessionLiveBeforeOpen,
           }),
         );
         if (replacement === undefined) return undefined;

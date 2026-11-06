@@ -618,6 +618,7 @@ export function resolveSidebarRowThreadId(
 export function filterSidebarV2VisibleThreads<
   T extends Pick<SidebarThreadSummary, "archivedAt" | "environmentId" | "id" | "lineage"> & {
     projectId: string;
+    channel?: SidebarThreadSummary["channel"];
   },
 >(
   threads: readonly T[],
@@ -627,6 +628,8 @@ export function filterSidebarV2VisibleThreads<
   return threads.filter(
     (thread) =>
       thread.archivedAt === null &&
+      thread.channel?.kind !== "group_chat" &&
+      thread.channel?.kind !== "agent_personal" &&
       !isShownUnderParent(
         { environmentId: thread.environmentId, threadId: thread.id },
         thread.lineage,

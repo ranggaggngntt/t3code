@@ -78,6 +78,7 @@ export interface CreateThreadInput extends CommandMetadata {
   readonly interactionMode: ProviderInteractionMode;
   readonly branch: string | null;
   readonly worktreePath: string | null;
+  readonly channel?: import("@t3tools/contracts").OrchestrationV2ThreadChannel | undefined;
 }
 
 export interface ThreadCommandInput extends CommandMetadata {
@@ -409,6 +410,7 @@ export const createThread = Effect.fn("EnvironmentCommands.createThread")(functi
     interactionMode: input.interactionMode,
     branch: input.branch,
     worktreePath: input.worktreePath,
+    ...(input.channel === undefined ? {} : { channel: input.channel }),
   });
 });
 

@@ -53,6 +53,7 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
+import * as GroupChatCoordinatorService from "./GroupChatCoordinatorService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
@@ -152,6 +153,7 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
     Layer.mergeAll(
       McpAppModelContext.layer,
       PreviewAgentActivity.layer,
+      ProjectionStore.layer,
       layerCheckpointServiceProvided,
       layerEventSink,
       IdAllocator.layer,
@@ -280,6 +282,17 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
 const layerSecretRequestsProvided = SecretRequests.layer.pipe(
   Layer.provide(layerThreadManagementProvided),
 );
+const layerGroupChatCoordinatorProvided = GroupChatCoordinatorService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerOrchestratorProvided,
+      layerThreadManagementProvided,
+      layerThreadLaunchProvided,
+      IdAllocator.layer,
+    ),
+  ),
+);
 const layerScheduledTaskProvided = ScheduledTaskService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -372,6 +385,7 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
+  layerGroupChatCoordinatorProvided,
   layerScheduledTaskProvided,
   layerScratchThreadPromotionProvided,
   layerSecretRequestsProvided,

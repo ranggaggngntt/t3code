@@ -662,6 +662,11 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         createdAt,
         updatedAt: DateTime.formatIso(item.updatedAt),
         ...(item.type === "user_message" ? { inputIntent: item.inputIntent } : {}),
+        ...(item.authorAgentId !== undefined ? { authorAgentId: item.authorAgentId } : {}),
+        ...(item.authorAgentName !== undefined ? { authorAgentName: item.authorAgentName } : {}),
+        ...(item.authorAgentRole !== undefined ? { authorAgentRole: item.authorAgentRole } : {}),
+        ...(item.targetAgentId !== undefined ? { targetAgentId: item.targetAgentId } : {}),
+        ...(item.teamTaskRef !== undefined ? { teamTaskRef: item.teamTaskRef } : {}),
       };
       committedMessageIds.add(message.id);
       entries.push({

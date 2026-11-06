@@ -590,6 +590,8 @@ export function applyServerSettingsPatch(
     ...(patch.defaultProjectScripts !== undefined
       ? { defaultProjectScripts: patch.defaultProjectScripts }
       : {}),
+    ...(patch.agentProfiles !== undefined ? { agentProfiles: patch.agentProfiles } : {}),
+    ...(patch.teamGroups !== undefined ? { teamGroups: patch.teamGroups } : {}),
     ...(usageLimitSourcesPatch !== undefined
       ? {
           usageLimitSources: mergeSettingsEntries(

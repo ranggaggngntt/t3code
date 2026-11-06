@@ -87,6 +87,11 @@ export interface ChatMessage {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent | undefined;
+  readonly authorAgentId?: import("@t3tools/contracts").AgentProfileId | undefined;
+  readonly authorAgentName?: string | undefined;
+  readonly authorAgentRole?: string | undefined;
+  readonly targetAgentId?: import("@t3tools/contracts").AgentProfileId | undefined;
+  readonly teamTaskRef?: import("@t3tools/contracts").OrchestrationV2TeamTaskRef | undefined;
 }
 
 export interface ProposedPlan {
